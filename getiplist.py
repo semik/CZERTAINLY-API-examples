@@ -1,3 +1,5 @@
+import sys
+
 def ips(start, end):
     import socket, struct
     start = struct.unpack('>I', socket.inet_aton(start))[0]
@@ -12,8 +14,16 @@ def get_domain_name(ip_address):
   except socket.herror:
       return "UNKNOWN"
 
-ipFile = open('/home/moravek/czip.csv')
+if len(sys.argv)<2:
+    print("Usage:", sys.argv[0], "<file-with-IP-ranges>\n\n" +
+          "file should contain comma separated list of IP adreses\n")
+    sys.exit(1)
 
+try:
+    ipFile = open(sys.argv[1])
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
+    sys.exit(1)
 
 for ipranges in ipFile.readlines():
     startend = ipranges.split(',')
