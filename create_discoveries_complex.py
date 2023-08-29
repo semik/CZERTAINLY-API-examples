@@ -2,12 +2,39 @@
 
 # importing libraries
 import requests
-import json
 import socket
 import time
-import re
+import argparse
 
-api_base_url = "https://dev.czertainly.online/api/v1"
+parser = argparse.ArgumentParser(description='Create Discoveries in CZERTAINT via API from FQDNs')
+parser.add_argument('--czertainly',
+                    dest='base',
+                    default="https://czertainly.local/",
+                    help='URL to where CZERTAINLY is running')
+parser.add_argument('--cert',
+                    dest='cert',
+                    default='admin.crt',
+                    help='Certificate of admin for authorize to API. PEM format. Default name admin.crt')
+parser.add_argument('--key',
+                    dest='key',
+                    default='admin.key',
+                    help='Private key of admin for authorize to API. PEM format. Default name admin.key')
+parser.add_argument('--hosts_file',
+                    dest='hosts_file',
+                    help='File in format <IPv4>: <hostname>',
+                    required=True)
+parser.add_argument('--accept-norr',
+                    dest='accept_norr',
+                    default=False,
+                    action='store_true',
+                    help='Accept hosts without Reverse Record')
+parser.add_argument('--sleep',
+                    dest='sleep',
+                    default=10,
+                    help="Sleep between discovery creation")
+args = parser.parse_args()
+
+api_base_url = args.base+"/api/v1"
 connectors_api_url = api_base_url + "/connectors"
 discoveries_api_url = api_base_url + "/discoveries"
 
@@ -15,10 +42,10 @@ get_headers = {'Accept': 'application/json'}
 post_headers = get_headers 
 post_headers['Content-Type'] = 'application/json'
 
-cert_file = "client1.crt"
-key_file = "client1-nopw.key"
+cert_file = args.cert
+key_file = args.key
 
-hosts_file = "./ips_with_reverse_records.txt"
+hosts_file = args.hosts_file
 
 discovery_provider_name = 'Network-Discovery-Provider'
 
@@ -80,23 +107,32 @@ hostFile = open(hosts_file)
 discovery_num = 1
 discovery_prefix = "cznet-"
 batch_num = 0
-batch_list = ""
+batch_array = [[]]
 
-for hostName in hostFile.readlines():
-    hostName = hostName.strip()
-    ipAddress = get_ip_address(hostName)
-    if ipAddress != "UNKNOWN":
-        if re.search(r'^[0-9\.]*$', hostName) is None:
-            if re.search(r'vybezek-net', hostName) is None:
-                print("Host {}: {}".format(hostName, ipAddress))
-                batch_list += hostName + ","
-                batch_num += 1
-                if batch_num == 10:
-                    discovery_name = discovery_prefix + str(discovery_num).zfill(5)
-                    discovery_hosts = batch_list[:len(batch_list) - 1]
-                    discovery = create_discovery(discovery_name, discovery_hosts, ip_uuid, connector_uuid, port_uuid, allports_uuid)
-                    print("UUID of the new discovery for " + discovery_name + " is " + discovery['uuid'] + ".")
-                    batch_num = 0
-                    batch_list = ""
-                    discovery_num += 1
-                    time.sleep(60)
+for line in hostFile.readlines():
+    hostip = line.rstrip().split(':')
+    hostName = hostip[1].strip()
+    ipAddress = hostip[0].strip()
+    if (hostName != "UNKNOWN") or args.accept_norr:
+        if (hostName == "UNKNOWN"):
+            batch_array[batch_num].append(ipAddress)
+        else:
+            batch_array[batch_num].append(hostName)
+
+        if len(batch_array[batch_num]) >= 10:
+            batch_num += 1
+            batch_array.append([])
+
+for batch in batch_array:
+    if len(batch) == 0:
+        break
+
+    discovery_hosts = ', '
+    discovery_hosts = discovery_hosts.join(batch)
+    discovery_name = discovery_prefix + str(time.time())
+    print(discovery_name, discovery_hosts)
+
+    discovery = create_discovery(discovery_name, discovery_hosts, ip_uuid, connector_uuid, port_uuid, allports_uuid)
+    print("UUID of the new discovery for " + discovery_name + " is " + discovery['uuid'] + ".")
+
+    time.sleep(args.sleep)
